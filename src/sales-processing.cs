@@ -1,35 +1,41 @@
 #:package CsvHelper@33.1.0
+
+#:property PublishAot=false
+
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CsvHelper;
 using System.Globalization;
 
+var salesFilename = "sales_data.json";
 
-var options = new JsonSerializerOptions
+var json = await File.ReadAllTextAsync(salesFilename);
+var sales = JsonSerializer.Deserialize<List<SaleRecord>>(json);
+
+if(sales is not null)
 {
-    TypeInfoResolver = SerializerContext.Default
-};
+    var topProducts = sales
+        .GroupBy(s => s.Product)
+        .Select(g => new {
+            Product = g.Key,
+            TotalRevenue = g.Sum(s => s.Amount),
+            UnitsSold = g.Count()
+        })
+        .OrderByDescending(p => p.TotalRevenue)
+        .Take(10);
 
-var json = await File.ReadAllTextAsync("sales_data.json");
-var sales = JsonSerializer.Deserialize<List<SaleRecord>>(json, options);
+    using var writer = new StreamWriter("top_products.csv");
+    using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+    csv.WriteRecords(topProducts);
 
-var topProducts = sales
-    .GroupBy(s => s.Product)
-    .Select(g => new {
-        Product = g.Key,
-        TotalRevenue = g.Sum(s => s.Amount),
-        UnitsSold = g.Count()
-    })
-    .OrderByDescending(p => p.TotalRevenue)
-    .Take(10);
+    Console.WriteLine("Report generated! Check top_products.csv");
 
-using var writer = new StreamWriter("top_products.csv");
-using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
-csv.WriteRecords(topProducts);
+}
+else
+{
+    Console.WriteLine($"File {salesFilename} was empty. Unable to generate report!");
+}
 
-Console.WriteLine("Report generated! Check top_products.csv");
 
 public record SaleRecord(string Product, decimal Amount, DateTime Date);
 
-[JsonSerializable(typeof(List<SaleRecord>))]
-public partial class SerializerContext : JsonSerializerContext { }
